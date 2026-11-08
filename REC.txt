@@ -1,0 +1,290 @@
+=====================================================================
+ADA - COMPLETE SETUP GUIDE  (voice assistant + planner + news + gestures)
+=====================================================================
+
+---------------------------------------------------------------------
+1. FILES YOU NEED (all in ONE folder, e.g. ~/ada)
+---------------------------------------------------------------------
+  ada.py                  main program (voice, LLM, UI server, starts the gestures)
+  ada_ui.html             the web UI (must be patched once, see step 6)
+  gesture_engine.py       gesture / room tracker (hand_gesture_tracker_v19 is built
+                          into this file - you do NOT need the v19 file any more)
+  patch_ui.py             one-time script that patches ada_ui.html
+  schedualAGT.py          planner tools: tasks, schedule, alarms, timers, stopwatches
+                          (the planner script you pasted - SAVE IT AS schedualAGT.py,
+                          because ada.py does "from schedualAGT import ...")
+  ada_news.py             news tools
+  news_get.py             news fetcher
+  feeds.txt               list of news feeds
+  Modelfile               your Ollama model definition (system prompt for Ada)
+  en_GB-jenny_dioco-medium.onnx
+  en_GB-jenny_dioco-medium.onnx.json     Piper voice (download in step 3)
+
+Files created automatically while running (leave them alone):
+  planner_tasks.json, planner_clock.json, planner.xlsx   (planner data)
+  hand_landmarker.task, pose_landmarker_lite.task        (gesture models, downloaded
+                                                          on first run)
+
+NOTE ON schedualAGT.py: DATA_DIR in that file is set to a Windows path
+(C:\My_Projects\Assistent_AI). On Linux that folder does not exist, so it
+automatically falls back to the folder the script is in. Nothing to change.
+
+
+---------------------------------------------------------------------
+2. INSTALL - LINUX (Debian / Ubuntu / Raspberry Pi OS)
+---------------------------------------------------------------------
+  sudo apt update
+  sudo apt install -y python3-pip python3-venv portaudio19-dev libportaudio2 libatlas-base-dev ffmpeg curl wget
+
+  mkdir -p ~/ada && cd ~/ada
+  python3 -m venv venv
+  source venv/bin/activate
+
+  pip install --upgrade pip
+  pip install faster-whisper sounddevice numpy requests piper-tts openpyxl
+  pip install opencv-python-headless mediapipe
+
+Notes:
+  * MediaPipe needs Python 3.9 - 3.12. Check with:  python3 --version
+  * opencv-python-headless avoids the "libGL" error on Linux. If you set
+    SHOW_WINDOW = True in gesture_engine.py, install opencv-python instead.
+  * openpyxl is the only package schedualAGT.py needs.
+  * ada_news.py / news_get.py may need extra packages (for example feedparser or
+    beautifulsoup4). Open them, look at the "import" lines at the top, and
+    pip install anything that is missing.
+
+Webcam + microphone permission (log out and back in afterwards):
+  sudo usermod -aG video,audio $USER
+  ls /dev/video*          (your camera should be listed)
+
+
+---------------------------------------------------------------------
+   INSTALL - WINDOWS (alternative)
+---------------------------------------------------------------------
+  pip install faster-whisper sounddevice numpy requests piper-tts openpyxl
+  pip install opencv-python mediapipe
+  (No PortAudio install needed - sounddevice bundles it.)
+  Python 3.9 - 3.12 for MediaPipe.
+
+
+---------------------------------------------------------------------
+3. DOWNLOADS
+---------------------------------------------------------------------
+Piper voice (British female, Jenny) - put both files in the ada folder:
+  cd ~/ada
+  wget https://huggingface.co/rhasspy/piper-voices/resolve/main/en/en_GB/jenny_dioco/medium/en_GB-jenny_dioco-medium.onnx
+  wget https://huggingface.co/rhasspy/piper-voices/resolve/main/en/en_GB/jenny_dioco/medium/en_GB-jenny_dioco-medium.onnx.json
+
+MediaPipe gesture models (OPTIONAL - the engine downloads them itself on the
+first run; use these only if the machine has no internet for Python):
+  cd ~/ada
+  wget https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task
+  wget https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_lite/float16/1/pose_landmarker_lite.task
+
+Whisper speech model (base.en) downloads automatically the first time ada.py runs.
+
+
+---------------------------------------------------------------------
+4. OLLAMA (the language model)
+---------------------------------------------------------------------
+  curl -fsSL https://ollama.com/install.sh | sh
+  ollama create ada4 -f Modelfile
+
+ada.py uses  OLLAMA_MODEL = "ada4".  The model must be created with that name
+(or change the name at the top of ada.py).
+Make sure Ollama is running:  ollama serve   (or the Ollama service/app)
+
+
+---------------------------------------------------------------------
+5. FOLDER LAYOUT CHECK
+---------------------------------------------------------------------
+  ~/ada/
+  |-- ada.py
+  |-- ada_ui.html
+  |-- gesture_engine.py
+  |-- patch_ui.py
+  |-- schedualAGT.py
+  |-- ada_news.py
+  |-- news_get.py
+  |-- feeds.txt
+  |-- Modelfile
+  |-- en_GB-jenny_dioco-medium.onnx
+  `-- en_GB-jenny_dioco-medium.onnx.json
+
+
+---------------------------------------------------------------------
+6. FIRST RUN
+---------------------------------------------------------------------
+  cd ~/ada
+  source venv/bin/activate
+  python patch_ui.py        # ONCE ONLY. Makes a backup (ada_ui.html.bak) and patches the UI.
+  python ada.py
+
+Then open  http://localhost:8765  in a browser.
+Console should show:
+  UI running at http://localhost:8765
+  [gesture] clap microphone check: ON
+  [gesture] engine running
+
+Open the Camera tab to see the webcam feed with the tracking overlay.
+Hard-refresh the browser (Ctrl+F5) after patching.
+
+
+---------------------------------------------------------------------
+7. HOW TO USE - GESTURES
+---------------------------------------------------------------------
+STEP 0 - tell it who you are: put BOTH hands flat on your chest for about
+1 second. The Camera tab then shows "YOU". Only your hands are read; other
+people's hands are ignored. (Needed whenever more than one person is in view.)
+
+Rules that always apply:
+  * Hands only count when they are ABOVE YOUR NOSE (centre of your face).
+  * Gestures are OFF at launch. Only the double clap is listened for until you
+    double clap. Hands are light blue while gestures are off, green when on.
+
+  GESTURE                           WHAT IT DOES
+  --------------------------------  -----------------------------------------
+  Double clap (FIRST one after      Turns gestures ON and wakes Ada.
+   launch)
+  Double clap (every later one)     Only turns gestures ON / OFF. Does not
+                                    change whether Ada is awake.
+  Peace sign (index + middle)       Toggles Ada: awake -> sleep, asleep -> wake.
+                                    Does NOT change the gestures ON/OFF state.
+  Hold a closed FIST for 5 sec      Shuts the whole system down (a countdown
+                                    shows on the camera feed; open your hand to
+                                    cancel).
+  Hold an OPEN hand for 3 sec       Interrupts Ada and stops her speaking
+                                    (countdown shows on the feed).
+  Swipe with your RIGHT hand        Previous tab (any direction).
+  Swipe with your LEFT hand         Next tab (any direction).
+                                    A swipe = turning your open palm, or moving
+                                    it quickly in any direction.
+
+Voice commands still work too:
+  Wake:      "Ada turn on" / "Ada wake up"        (does NOT turn gestures on)
+  Sleep:     "Ada good night" / "good night" / "Ada go to sleep"
+             (also turns gestures off)
+  Shutdown:  "Ada shutdown system" / "shut down"
+
+Tip: if gestures are ON and you do the peace sign to sleep Ada, you can wake
+her again with another peace sign. Gestures stay on the whole time.
+
+
+---------------------------------------------------------------------
+8. HOW TO USE - PLANNER (schedualAGT.py)
+---------------------------------------------------------------------
+Just talk to Ada. Examples:
+  "Add a task: call the dentist tomorrow at 3 pm"
+  "What's on my schedule today?"        "Plan my tasks"
+  "Set a timer for 10 minutes"          "Set an alarm for 7:30"
+  "Start the stopwatch" / "Lap" / "Stop the stopwatch"
+  "Cancel all alarms"                   "Export my tasks to Excel"
+Alarms and timers speak on their own, even when Ada is asleep.
+The Tasks tab in the UI shows tasks, timers, alarms and stopwatches live.
+Planner data lives in planner_tasks.json and planner_clock.json (next to
+schedualAGT.py). planner.xlsx is created by "export to Excel".
+The auto-plan window is 09:00 - 17:00 (DAY_START / DAY_END in schedualAGT.py).
+
+
+---------------------------------------------------------------------
+9. TUNING (top of gesture_engine.py)
+---------------------------------------------------------------------
+  CAMERA_INDEX = 0            use 1 if the wrong / no camera opens
+  CAMERA_W, CAMERA_H          1280x720 default; use 640x480 to save CPU / RAM
+  POSE_EVERY_N = 3            body tracker runs every Nth frame (raise to 4-5)
+  HAND_MAX = 4                lower to 2 if you are the only person
+  POSE_MAX_PEOPLE = 2         set to the number of people actually in view
+  ZOOM_ENABLED = True         False skips the auto-zoom crop
+  USE_AUDIO = True            False = double clap judged by camera only
+  GESTURES_START_ON = False   True = gestures active from launch
+  FIST_HOLD_SECONDS = 5.0     time to hold a fist to shut down
+  OPEN_HOLD_SECONDS = 3.0     time to hold an open hand to stop Ada talking
+  SWIPE_ANY_MOVE = True       False = only the palm-turn swipe counts
+  SWIPE_MOVE_MIN = 3.0        bigger = needs a bigger sweep for movement swipes
+  SWIPE_ROT_DEG = 30          how far you turn your palm for a turn-swipe
+  SWAP_HANDS = False          True if left/right hand labels come out reversed
+  GESTURE_MARGIN = 0.02       how far below the nose a hand may sit and still count
+  STREAM_ZOOM_PANEL = False   True = camera tab also shows the zoomed panel
+  SHOW_WINDOW = False         True = also open a normal OpenCV window
+
+Other settings in ada.py:
+  SILENCE_THRESHOLD, SILENCE_DURATION   speech detection sensitivity
+  OLLAMA_MODEL, OLLAMA_NUM_CTX          model name and context size
+  INTERRUPT_THRESHOLD                   how loud you must be to talk over Ada
+
+
+---------------------------------------------------------------------
+10. TROUBLESHOOTING
+---------------------------------------------------------------------
+  "Could not open webcam"
+      Set CAMERA_INDEX = 1. Close any app or browser tab using the camera.
+      Make sure you are in the "video" group (step 2).
+
+  clap microphone check: OFF (...)
+      The reason is printed beside it. Usually sounddevice is missing or the
+      mic is busy. Set USE_AUDIO = False to use the camera for claps.
+
+  Claps not registering
+      Clap with BOTH hands above your nose and in view. Do the chest gesture
+      first so the tracker knows you.
+
+  Hands are grey / nothing reacts
+      The tracker does not know it is you yet, or your hands are below your
+      nose. Do the chest gesture and raise your hands.
+
+  Camera tab says "No Signal"
+      Open http://localhost:8765/camera.mjpg directly. If it errors, look for
+      "[gesture] engine stopped: ..." in the console.
+
+  Left / right swipes are reversed
+      Set SWAP_HANDS = True.
+
+  Tabs jump too easily, or gestures fire by accident
+      Raise SWIPE_ROT_DEG, raise SWIPE_MOVE_MIN, or set SWIPE_ANY_MOVE = False.
+
+  Everything is slow
+      Lower CAMERA_W / CAMERA_H to 640 x 480, raise POSE_EVERY_N, lower
+      HAND_MAX. Whisper, Piper, Ollama and the vision models share the CPU.
+
+  "ModuleNotFoundError"
+      pip install the package named in the error (inside the venv).
+
+  Ollama errors / "couldn't reach the language model"
+      Run "ollama serve" and check "ollama list" shows ada4.
+
+  Planner data "is not valid JSON"
+      A planner_*.json file got damaged. Fix or delete it; the tool never
+      overwrites a broken file by itself.
+
+  patch_ui.py says it could not apply an edit
+      ada_ui.html is not the original version. Restore it from
+      ada_ui.html.bak (or your own backup) and try again.
+
+  Shutdown by fist while talking
+      A shutdown command waits for Ada to finish her current reply if she is
+      in the middle of a long LLM answer (up to 120 seconds).
+
+
+---------------------------------------------------------------------
+11. RUN EVERY TIME
+---------------------------------------------------------------------
+  cd ~/ada
+  source venv/bin/activate
+  python ada.py
+  -> open http://localhost:8765
+
+To stop: hold a fist for 5 seconds, say "Ada shutdown system", or press
+Ctrl+C in the terminal.
+=====================================================================
+sudo apt update && sudo apt install -y python3-pip python3-venv portaudio19-dev libportaudio2 libatlas-base-dev ffmpeg curl wget
+cd ~/ada
+python3 -m venv venv
+source venv/bin/activate
+pip install --upgrade pip
+pip install faster-whisper sounddevice numpy requests piper-tts openpyxl opencv-python-headless mediapipe
+wget -nc https://huggingface.co/rhasspy/piper-voices/resolve/main/en/en_GB/jenny_dioco/medium/en_GB-jenny_dioco-medium.onnx
+wget -nc https://huggingface.co/rhasspy/piper-voices/resolve/main/en/en_GB/jenny_dioco/medium/en_GB-jenny_dioco-medium.onnx.json
+curl -fsSL https://ollama.com/install.sh | sh
+ollama create ada4 -f Modelfile
+sudo usermod -aG video,audio $USER
+cd ~/ada && source venv/bin/activate && python ada.py
